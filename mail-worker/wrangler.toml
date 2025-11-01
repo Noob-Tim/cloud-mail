@@ -34,6 +34,9 @@ crons = ["0 16 * * *"]	#定时任务每天晚上12点执行
 #domain = []				#邮件域名可可配置多个 示例: ["example1.com","example2.com"]
 #admin = ""				#管理员的邮箱	示例: admin@example.com
 #jwt_secret = ""			#jwt令牌的密钥,随便填一串字符串
+#INTERNAL_API_KEY = ""		#外部API专用Key 示例: "your-secret-api-key-2024"
+#SYSTEM_SENDER_EMAIL = ""	#系统发件邮箱 示例: "noreply@example.com"  
+#SYSTEM_SENDER_NAME = ""	#系统发件人名称 示例: "农历生日提醒"
 
 [build]
 command = "pnpm --prefix ../mail-vue install && pnpm --prefix ../mail-vue run build"
