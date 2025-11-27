@@ -7,3 +7,9 @@ app.post('/external/send-email', async (c) => {
 	const emailResult = await externalService.sendEmail(c, await c.req.json());
 	return c.json(result.ok(emailResult));
 });
+
+// 外部查询收件API接口
+app.post('/external/query-email', async (c) => {
+	const emailList = await externalService.queryEmail(c, await c.req.json());
+	return c.json(result.ok(emailList));
+});
