@@ -5,7 +5,7 @@ import userService from './user-service';
 import emailService from './email-service';
 import orm from '../entity/orm';
 import account from '../entity/account';
-import { and, asc, eq, gt, inArray, count, sql, ne, or, lt, desc } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, count, sql, ne, or, lt, lte, desc } from 'drizzle-orm';
 import {accountConst, isDel, settingConst} from '../const/entity-const';
 import settingService from './setting-service';
 import turnstileService from './turnstile-service';
@@ -178,7 +178,8 @@ const accountService = {
 	selectById(c, accountId) {
 		return orm(c).select().from(account).where(
 			and(eq(account.accountId, accountId),
-				eq(account.isDel, isDel.NORMAL)))
+				eq(account.isDel, isDel.NORMAL),
+				or(eq(account.isTemp, 0), gt(account.expiresAt, utcDateTime()))))
 			.get();
 	},
 
@@ -211,7 +212,11 @@ const accountService = {
 	},
 
 	async countUserAccount(c, userId) {
-		const { num } = await orm(c).select({num: count()}).from(account).where(and(eq(account.userId, userId),eq(account.isDel, isDel.NORMAL))).get();
+		const { num } = await orm(c).select({num: count()}).from(account).where(and(
+			eq(account.userId, userId),
+			eq(account.isDel, isDel.NORMAL),
+			or(eq(account.isTemp, 0), gt(account.expiresAt, utcDateTime()))
+		)).get();
 		return num;
 	},
 
@@ -260,6 +265,28 @@ const accountService = {
 		await orm(c).delete(account).where(eq(account.accountId, accountId)).run();
 	},
 
+	isExpiredTempMailbox(accountRow, now = Date.now()) {
+		if (!accountRow?.isTemp || !accountRow.expiresAt) return false;
+		const expiresAt = Date.parse(`${String(accountRow.expiresAt).replace(' ', 'T')}Z`);
+		return Number.isFinite(expiresAt) && expiresAt <= now;
+	},
+
+	async cleanupExpiredTempMailboxes(c, limit = 100) {
+		const rows = await orm(c).select({ accountId: account.accountId })
+			.from(account)
+			.where(and(
+				eq(account.isTemp, 1),
+				lte(account.expiresAt, utcDateTime())
+			))
+			.limit(limit)
+			.all();
+
+		for (const row of rows) {
+			await this.physicsDelete(c, row);
+		}
+		return rows.length;
+	},
+
 	async setAllReceive(c, params, userId) {
 		let a = null
 		const { accountId } = params;
@@ -280,5 +307,9 @@ const accountService = {
 		await orm(c).update(account).set({ sort: mainSort - 1 }).where(and(eq(account.accountId, accountId),eq(account.userId,userId))).run();
 	}
 };
+
+function utcDateTime(value = Date.now()) {
+	return new Date(value).toISOString().slice(0, 19).replace('T', ' ');
+}
 
 export default accountService;

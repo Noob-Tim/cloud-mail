@@ -191,11 +191,13 @@ const openApiService = {
 			status: account.status,
 			latestEmailTime: account.latestEmailTime,
 			createTime: account.createTime,
-			isDeleted: account.isDel
+			isDeleted: account.isDel,
+			isTemp: account.isTemp,
+			expiresAt: account.expiresAt
 		}).from(account).where(and(...conditions)).orderBy(asc(account.accountId)).all();
 	},
 
-	async createMailbox(c, userId, params) {
+	async createMailbox(c, userId, params, internalValues = {}) {
 		const id = positiveId(userId, 'userId');
 		const owner = await userService.selectById(c, id);
 		if (!owner) {
@@ -217,10 +219,10 @@ const openApiService = {
 			}
 		}
 
-			const ownerRole = await roleService.selectById(c, owner.type);
-			if (!ownerRole) {
-				throw new BizError('用户角色不存在', 409);
-			}
+		const ownerRole = await roleService.selectById(c, owner.type);
+		if (!ownerRole) {
+			throw new BizError('用户角色不存在', 409);
+		}
 		if (owner.email !== c.env.admin) {
 			if (!roleService.hasAvailDomainPerm(ownerRole.availDomain, address)) {
 				throw new BizError('该用户无权使用此域名', 403);
@@ -233,8 +235,58 @@ const openApiService = {
 		return orm(c).insert(account).values({
 			userId: id,
 			email: address,
-			name: String(params.name || emailUtils.getName(address)).slice(0, 30)
+			name: String(params.name || emailUtils.getName(address)).slice(0, 30),
+			...internalValues
 		}).returning().get();
+	},
+
+	async createTempMailbox(c, params) {
+		const userId = positiveId(params.userId, 'userId');
+		const ttlMinutes = positiveIntegerParam(params.ttlMinutes, 'ttlMinutes', 60);
+		if (ttlMinutes > 10080) {
+			throw new BizError('ttlMinutes 不能超过 10080（7 天）', 400);
+		}
+
+		const domains = configuredDomains(c.env.domain);
+		const domain = String(params.domain || domains[0] || '').trim().toLowerCase();
+		if (!domains.includes(domain)) {
+			throw new BizError('域名不在已配置域名列表中', 400);
+		}
+
+		const prefix = String(params.prefix || 'temp').trim().toLowerCase();
+		if (!/^[a-z0-9][a-z0-9-]{0,19}$/.test(prefix)) {
+			throw new BizError('prefix 只能包含小写字母、数字和连字符，长度为 1-20', 400);
+		}
+
+		const expiresAt = utcDateTime(Date.now() + ttlMinutes * 60 * 1000);
+		for (let attempt = 0; attempt < 5; attempt += 1) {
+			const address = `${prefix}-${randomMailboxSuffix()}@${domain}`;
+			try {
+				const row = await this.createMailbox(c, userId, {
+					email: address,
+					name: params.name
+				}, { isTemp: 1, expiresAt });
+				return { ...row, ttlMinutes };
+			} catch (error) {
+				if (!isMailboxConflict(error)) throw error;
+			}
+		}
+
+		throw new BizError('无法生成唯一临时邮箱，请重试', 409);
+	},
+
+	async cleanupTempMailbox(c, accountId) {
+		const id = positiveId(accountId, 'accountId');
+		const row = await orm(c).select().from(account).where(eq(account.accountId, id)).get();
+		if (!row) {
+			throw new BizError('临时邮箱不存在', 404);
+		}
+		if (!row.isTemp) {
+			throw new BizError('只能通过此接口清理临时邮箱', 400);
+		}
+
+		await accountService.physicsDelete(c, { accountId: id });
+		return { accountId: id, deleted: true };
 	},
 
 	async updateMailbox(c, accountId, params) {
@@ -444,6 +496,10 @@ function validateSort(value) {
 
 function hasConfiguredDomain(value, emailAddress) {
 	const domain = emailUtils.getDomain(emailAddress).toLowerCase();
+	return configuredDomains(value).includes(domain);
+}
+
+function configuredDomains(value) {
 	let domains = value;
 	if (typeof domains === 'string') {
 		try {
@@ -453,7 +509,9 @@ function hasConfiguredDomain(value, emailAddress) {
 			domains = domains.split(',');
 		}
 	}
-	return Array.isArray(domains) && domains.some(item => String(item).trim().toLowerCase() === domain);
+	return Array.isArray(domains)
+		? domains.map(item => String(item).trim().toLowerCase()).filter(Boolean)
+		: [];
 }
 
 function booleanParam(value, defaultValue) {
@@ -469,6 +527,19 @@ function validDate(value, name) {
 		throw new BizError(`${name} 时间格式无效`, 400);
 	}
 	return date.format('YYYY-MM-DD HH:mm:ss');
+}
+
+function randomMailboxSuffix() {
+	return crypto.randomUUID().replaceAll('-', '').slice(0, 12);
+}
+
+function utcDateTime(value) {
+	return new Date(value).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function isMailboxConflict(error) {
+	return (error?.name === 'BizError' && error.code === 409)
+		|| String(error?.message || '').includes('UNIQUE constraint failed: account.email');
 }
 
 export default openApiService;

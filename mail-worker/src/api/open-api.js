@@ -57,6 +57,16 @@ app.delete('/open/v1/mailboxes/:accountId', async c => {
 	return c.json(result.ok(await openApiService.deleteMailbox(c, c.req.param('accountId'))));
 });
 
+app.post('/open/v1/temp-mailboxes', async c => {
+	await apiKeyService.authenticate(c, 'mailboxes:write');
+	return c.json(result.ok(await openApiService.createTempMailbox(c, await readJson(c))));
+});
+
+app.delete('/open/v1/temp-mailboxes/:accountId', async c => {
+	await apiKeyService.authenticate(c, 'mailboxes:write');
+	return c.json(result.ok(await openApiService.cleanupTempMailbox(c, c.req.param('accountId'))));
+});
+
 app.get('/open/v1/emails', async c => {
 	await apiKeyService.authenticate(c, 'emails:read');
 	return c.json(result.ok(await openApiService.listEmails(c, c.req.query())));

@@ -8,8 +8,11 @@ describe('open api specification', () => {
 		expect(spec.servers[0].url).toBe('https://mail.example.com/api/open/v1');
 		expect(spec.paths).toHaveProperty('/users');
 		expect(spec.paths).toHaveProperty('/users/{userId}/mailboxes');
+		expect(spec.paths).toHaveProperty('/temp-mailboxes');
+		expect(spec.paths).toHaveProperty('/temp-mailboxes/{accountId}');
 		expect(spec.paths).toHaveProperty('/emails/{emailId}');
 		expect(spec.paths).toHaveProperty('/emails/send');
+		expect(spec.components.schemas.TempMailboxCreate.properties.ttlMinutes.maximum).toBe(10080);
 	});
 
 	it('declares a scope for every protected operation', () => {

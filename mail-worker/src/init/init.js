@@ -33,8 +33,29 @@ const dbInit = {
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
+		await this.v3_5DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_5DB(c) {
+		const isTempColumn = await c.env.db.prepare(
+			`SELECT name FROM pragma_table_info('account') WHERE name = 'is_temp' LIMIT 1`
+		).first();
+		if (!isTempColumn) {
+			await c.env.db.prepare(`ALTER TABLE account ADD COLUMN is_temp INTEGER NOT NULL DEFAULT 0;`).run();
+		}
+
+		const expiresAtColumn = await c.env.db.prepare(
+			`SELECT name FROM pragma_table_info('account') WHERE name = 'expires_at' LIMIT 1`
+		).first();
+		if (!expiresAtColumn) {
+			await c.env.db.prepare(`ALTER TABLE account ADD COLUMN expires_at DATETIME;`).run();
+		}
+
+		await c.env.db.prepare(
+			`CREATE INDEX IF NOT EXISTS idx_account_temp_expiry ON account(is_temp, expires_at) WHERE is_temp = 1`
+		).run();
 	},
 
 	async v3_4DB(c) {
@@ -699,7 +720,9 @@ const dbInit = {
 			latest_email_time DATETIME,
 			create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			user_id INTEGER NOT NULL,
-			is_del INTEGER DEFAULT 0 NOT NULL
+			is_del INTEGER DEFAULT 0 NOT NULL,
+			is_temp INTEGER DEFAULT 0 NOT NULL,
+			expires_at DATETIME
 		  )
 		`).run();
 

@@ -71,6 +71,11 @@ export async function email(message, env, ctx) {
 			}
 		}
 
+			if (accountService.isExpiredTempMailbox(account)) {
+				message.setReject('Recipient expired');
+				return;
+			}
+
 		if (!account && noRecipient === settingConst.noRecipient.CLOSE) {
 			message.setReject('Recipient not found');
 			return;

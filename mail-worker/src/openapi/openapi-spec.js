@@ -93,6 +93,23 @@ export function createOpenApiSpec(origin) {
 					responses: { 200: response('邮箱地址已标记删除') }
 				})
 			},
+			'/temp-mailboxes': {
+				post: operation('Mailboxes', '创建随机临时邮箱', 'mailboxes:write', {
+					requestBody: jsonBody('自动生成随机地址；有效期最长 7 天', 'TempMailboxCreate', {
+						userId: 1,
+						domain: 'example.com',
+						prefix: 'register',
+						ttlMinutes: 30
+					}),
+					responses: { 200: response('创建后的临时邮箱和到期时间') }
+				})
+			},
+			'/temp-mailboxes/{accountId}': {
+				delete: operation('Mailboxes', '清理临时邮箱及其邮件和附件', 'mailboxes:write', {
+					parameters: [idParameter('accountId')],
+					responses: { 200: response('临时邮箱已清理') }
+				})
+			},
 			'/emails': {
 				get: operation('Emails', '查询邮件列表', 'emails:read', {
 					parameters: queryParameters(['page', 'pageSize', 'userId', 'accountId', 'type', 'from', 'to', 'subject', 'unread', 'deleted', 'startTime', 'endTime', 'sort']),
@@ -171,6 +188,13 @@ export function createOpenApiSpec(origin) {
 				MailboxUpdate: objectSchema([], {
 					name: { type: 'string', maxLength: 30, description: '新的显示名称' },
 					deleted: { type: 'boolean', description: '传 false 恢复已软删除邮箱地址' }
+				}),
+				TempMailboxCreate: objectSchema(['userId'], {
+					userId: { type: 'integer', minimum: 1, description: '临时邮箱所属用户 ID' },
+					domain: { type: 'string', description: '已配置域名；省略时使用第一个域名' },
+					prefix: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,19}$', default: 'temp', description: '随机地址前缀' },
+					name: { type: 'string', maxLength: 30, description: '显示名称' },
+					ttlMinutes: { type: 'integer', minimum: 1, maximum: 10080, default: 60, description: '有效分钟数，最长 7 天' }
 				}),
 				EmailUpdate: objectSchema([], {
 					unread: { type: 'boolean', description: 'true 标记未读，false 标记已读' },
