@@ -120,15 +120,28 @@
       <el-tab-pane :label="t('apiReference')" name="docs">
         <div v-loading="docsLoading" class="docs-pane">
           <section class="connection-band">
-            <div>
-              <span class="band-label">{{ t('apiBaseUrl') }}</span>
-              <code>{{ baseUrl }}</code>
+            <div class="connection-row">
+              <div>
+                <span class="band-label">{{ t('apiBaseUrl') }}</span>
+                <code>{{ baseUrl }}</code>
+              </div>
+              <el-tooltip :content="t('copy')">
+                <el-button circle text :aria-label="t('copy')" @click="copyText(baseUrl)">
+                  <Icon icon="lucide:copy" width="17" height="17" />
+                </el-button>
+              </el-tooltip>
             </div>
-            <el-tooltip :content="t('copy')">
-              <el-button circle text :aria-label="t('copy')" @click="copyText(baseUrl)">
-                <Icon icon="lucide:copy" width="17" height="17" />
-              </el-button>
-            </el-tooltip>
+            <div class="connection-row">
+              <div>
+                <span class="band-label">{{ t('apiMachineDocument') }}</span>
+                <code>{{ openApiUrl }}</code>
+              </div>
+              <el-tooltip :content="t('copy')">
+                <el-button circle text :aria-label="t('copy')" @click="copyText(openApiUrl)">
+                  <Icon icon="lucide:copy" width="17" height="17" />
+                </el-button>
+              </el-tooltip>
+            </div>
           </section>
 
           <section class="auth-note">
@@ -137,6 +150,45 @@
               <strong>{{ t('apiAuthentication') }}</strong>
               <p>{{ t('apiAuthenticationDesc') }}</p>
             </div>
+          </section>
+
+          <section v-if="agentGuidance" class="agent-guide">
+            <div class="agent-guide-heading">
+              <Icon icon="lucide:bot" width="20" height="20" />
+              <div>
+                <h2>{{ t('apiAgentWorkflow') }}</h2>
+                <p>{{ t('apiAgentWorkflowDesc') }}</p>
+              </div>
+            </div>
+            <ol class="workflow-list">
+              <li v-for="item in agentGuidance.temporaryMailboxWorkflow" :key="item.step">
+                <span class="workflow-step">{{ item.step }}</span>
+                <code>{{ item.method }} {{ item.path }}</code>
+                <span>{{ item.purpose }}</span>
+              </li>
+            </ol>
+            <dl class="guidance-notes">
+              <div v-if="agentGuidance.prerequisites?.length">
+                <dt>{{ t('apiPrerequisites') }}</dt>
+                <dd><ul><li v-for="item in agentGuidance.prerequisites" :key="item">{{ item }}</li></ul></dd>
+              </div>
+              <div>
+                <dt>{{ t('apiPolling') }}</dt>
+                <dd>{{ agentGuidance.polling }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('apiIdempotency') }}</dt>
+                <dd>{{ agentGuidance.idempotency }}</dd>
+              </div>
+              <div v-if="agentGuidance.retryPolicy">
+                <dt>{{ t('apiRetryPolicy') }}</dt>
+                <dd><ul><li v-for="item in agentGuidance.retryPolicy" :key="item">{{ item }}</li></ul></dd>
+              </div>
+              <div v-if="agentGuidance.limitations?.length">
+                <dt>{{ t('apiLimitations') }}</dt>
+                <dd><ul><li v-for="item in agentGuidance.limitations" :key="item">{{ item }}</li></ul></dd>
+              </div>
+            </dl>
           </section>
 
           <section v-for="group in endpointGroups" :key="group.name" class="endpoint-group">
@@ -167,7 +219,10 @@
                         <span class="field-meta">{{ parameter.in }} · {{ schemaType(parameter.schema) }}</span>
                         <el-tag v-if="parameter.required" size="small" type="danger" effect="plain">{{ t('apiRequired') }}</el-tag>
                         <span v-else class="field-optional">{{ t('apiOptional') }}</span>
-                        <span class="field-description">{{ parameter.description }}</span>
+                        <span class="field-description">
+                          {{ parameter.description }}
+                          <small v-if="schemaRules(parameter.schema)">{{ schemaRules(parameter.schema) }}</small>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -180,7 +235,10 @@
                         <span class="field-meta">body · {{ field.type }}</span>
                         <el-tag v-if="field.required" size="small" type="danger" effect="plain">{{ t('apiRequired') }}</el-tag>
                         <span v-else class="field-optional">{{ t('apiOptional') }}</span>
-                        <span class="field-description">{{ field.description }}</span>
+                        <span class="field-description">
+                          {{ field.description }}
+                          <small v-if="field.rules">{{ field.rules }}</small>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -204,6 +262,18 @@
                     </el-tooltip>
                   </div>
                   <pre><code>{{ curlExample(endpoint) }}</code></pre>
+
+                  <template v-if="endpoint.responseExample !== undefined">
+                    <div class="code-heading">
+                      <span>{{ t('apiResponseExample') }}</span>
+                      <el-tooltip :content="t('copy')">
+                        <el-button circle text :aria-label="t('copy')" @click="copyText(formatJson(endpoint.responseExample))">
+                          <Icon icon="lucide:copy" width="16" height="16" />
+                        </el-button>
+                      </el-tooltip>
+                    </div>
+                    <pre><code>{{ formatJson(endpoint.responseExample) }}</code></pre>
+                  </template>
                 </div>
               </el-collapse-item>
             </el-collapse>
@@ -289,6 +359,8 @@ const scopeOptions = [
 ];
 
 const baseUrl = computed(() => spec.value?.servers?.[0]?.url || `${window.location.origin}/api/open/v1`);
+const openApiUrl = computed(() => spec.value?.externalDocs?.url || `${baseUrl.value}/openapi.json`);
+const agentGuidance = computed(() => spec.value?.['x-agent-guidance']);
 const endpointGroups = computed(() => {
   if (!spec.value) return [];
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
@@ -298,6 +370,7 @@ const endpointGroups = computed(() => {
       methods.forEach(method => {
         const operation = pathItem[method];
         if (operation?.tags?.includes(tag.name)) {
+          const responses = responseEntries(operation.responses);
           endpoints.push({
             method,
             path,
@@ -307,7 +380,8 @@ const endpointGroups = computed(() => {
             parameters: operation.parameters || [],
             requestBody: operation.requestBody,
             requestFields: requestFields(operation.requestBody),
-            responses: responseEntries(operation.responses)
+            responses,
+            responseExample: responses.find(response => response.code.startsWith('2'))?.example
           });
         }
       });
@@ -434,25 +508,49 @@ function requestFields(requestBody) {
       name,
       required: required.has(name),
       type: schemaType(resolved),
-      description: resolved.description || ''
+      description: resolved.description || '',
+      rules: schemaRules(resolved)
     };
   });
 }
 
 function responseEntries(responses = {}) {
-  return Object.entries(responses).map(([code, response]) => ({
-    code,
-    description: resolveRef(response)?.description || ''
-  }));
+  return Object.entries(responses).map(([code, response]) => {
+    const resolved = resolveRef(response);
+    return {
+      code,
+      description: resolved?.description || '',
+      example: resolved?.content?.['application/json']?.example
+    };
+  });
 }
 
 function schemaType(schema = {}) {
+  if (Array.isArray(schema.type)) return schema.type.join(' | ');
   if (schema.type === 'array') {
     const item = resolveRef(schema.items) || schema.items || {};
     return `array<${item.type || item.title || 'object'}>`;
   }
   const suffix = schema.format ? `:${schema.format}` : '';
   return `${schema.type || 'object'}${suffix}`;
+}
+
+function schemaRules(schema = {}) {
+  const rules = [];
+  if (schema.enum) rules.push(`enum: ${schema.enum.join(', ')}`);
+  if (schema.default !== undefined) rules.push(`default: ${schema.default}`);
+  if (schema.minimum !== undefined) rules.push(`min: ${schema.minimum}`);
+  if (schema.maximum !== undefined) rules.push(`max: ${schema.maximum}`);
+  if (schema.minLength !== undefined) rules.push(`minLength: ${schema.minLength}`);
+  if (schema.maxLength !== undefined) rules.push(`maxLength: ${schema.maxLength}`);
+  if (schema.minItems !== undefined) rules.push(`minItems: ${schema.minItems}`);
+  if (schema.maxItems !== undefined) rules.push(`maxItems: ${schema.maxItems}`);
+  if (schema.pattern) rules.push(`pattern: ${schema.pattern}`);
+  return rules.join(' · ');
+}
+
+function formatJson(value) {
+  return JSON.stringify(value, null, 2);
 }
 
 function curlExample(endpoint) {
@@ -564,17 +662,22 @@ async function copyText(value) {
 }
 
 .connection-band {
-  min-height: 54px;
   padding: 10px 14px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-bg-color);
+}
+
+.connection-row {
+  min-height: 34px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-bg-color);
 
-  > div {
+  > div:first-child {
     min-width: 0;
     display: flex;
     align-items: center;
@@ -596,7 +699,7 @@ async function copyText(value) {
 }
 
 .auth-note {
-  margin: 14px 0 28px;
+	margin: 14px 0;
   padding: 12px 14px;
   display: flex;
   gap: 12px;
@@ -608,6 +711,98 @@ async function copyText(value) {
     margin: 3px 0 0;
     color: var(--el-text-color-secondary);
     font-size: 13px;
+  }
+}
+
+.agent-guide {
+  margin: 0 0 28px;
+  padding: 16px 0;
+  border-top: 1px solid var(--el-border-color-lighter);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.agent-guide-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: 0;
+  }
+
+  p {
+    margin: 3px 0 0;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+}
+
+.workflow-list {
+  margin: 14px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+
+  li {
+    display: grid;
+    grid-template-columns: 24px minmax(250px, 0.8fr) minmax(220px, 1.2fr);
+    align-items: center;
+    gap: 10px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+
+  code {
+    color: var(--el-color-primary);
+    overflow-wrap: anywhere;
+  }
+}
+
+.workflow-step {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--el-border-color);
+  border-radius: 50%;
+  color: var(--el-text-color-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.guidance-notes {
+  margin: 0;
+  display: grid;
+  gap: 5px;
+
+  > div {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  dt {
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  dd {
+    margin: 0;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li + li {
+      margin-top: 3px;
+    }
   }
 }
 
@@ -704,6 +899,14 @@ async function copyText(value) {
     color: var(--el-color-primary);
     font-weight: 600;
   }
+}
+
+.field-description small {
+  display: block;
+  margin-top: 3px;
+  color: var(--el-text-color-placeholder);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
 }
 
 .field-meta,
@@ -806,10 +1009,23 @@ async function copyText(value) {
     width: 56px;
   }
 
-  .connection-band > div {
+  .connection-row > div:first-child {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .workflow-list li {
+    grid-template-columns: 24px minmax(0, 1fr);
+
+    > span:last-child {
+      grid-column: 2;
+    }
+  }
+
+  .guidance-notes > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
   .scope-options {
