@@ -32,8 +32,42 @@ const dbInit = {
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
+		await this.v3_4DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_4DB(c) {
+		await c.env.db.prepare(`
+			CREATE TABLE IF NOT EXISTS api_key (
+				api_key_id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				prefix TEXT NOT NULL,
+				key_hash TEXT NOT NULL,
+				scopes TEXT NOT NULL DEFAULT '[]',
+				status INTEGER NOT NULL DEFAULT 0,
+				expires_at DATETIME,
+				last_used_at DATETIME,
+				created_by INTEGER NOT NULL DEFAULT 0,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`).run();
+		await c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_api_key_hash ON api_key(key_hash)`).run();
+		await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_key(status, expires_at)`).run();
+
+		await c.env.db.prepare(`
+			INSERT INTO perm (name, perm_key, pid, type, sort)
+			SELECT 'API 管理', NULL, 0, 1, 7
+			WHERE NOT EXISTS (SELECT 1 FROM perm WHERE name = 'API 管理' AND pid = 0)
+		`).run();
+		await c.env.db.prepare(`
+			INSERT INTO perm (name, perm_key, pid, type, sort)
+			SELECT 'API Key 管理', 'api-key:manage', perm_id, 2, 0
+			FROM perm
+			WHERE name = 'API 管理' AND pid = 0
+			  AND NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'api-key:manage')
+			LIMIT 1
+		`).run();
 	},
 
 	async v3_3DB(c) {
@@ -683,9 +717,18 @@ const dbInit = {
 		`).run();
 
 		try {
-			await c.env.db.prepare(`
+				const autoRefreshColumn = await c.env.db.prepare(`
+				  SELECT name
+				  FROM pragma_table_info('setting')
+				  WHERE name IN ('auto_refresh', 'auto_refresh_time')
+				  ORDER BY name = 'auto_refresh' DESC
+				  LIMIT 1
+				`).first();
+				const autoRefreshName = autoRefreshColumn?.name || 'auto_refresh';
+
+				await c.env.db.prepare(`
 			  INSERT INTO setting (
-				register, receive, add_email, many_email, title, auto_refresh, register_verify, add_email_verify
+					register, receive, add_email, many_email, title, ${autoRefreshName}, register_verify, add_email_verify
 			  )
 			  SELECT 0, 0, 0, 0, 'Cloud Mail', 0, 1, 1
 			  WHERE NOT EXISTS (SELECT 1 FROM setting)

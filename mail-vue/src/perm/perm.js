@@ -99,6 +99,16 @@ const routers = {
             menu: true
         }
     }],
+    'api-key:manage': [{
+        path: '/api-management',
+        name: 'api-management',
+        component: () => import('@/views/api/index.vue'),
+        meta: {
+            title: 'apiManagement',
+            name: 'api-management',
+            menu: true
+        }
+    }],
     'all-email:query': [{
         path: '/all-mail',
         name: 'all-email',
