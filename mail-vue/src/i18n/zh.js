@@ -31,6 +31,7 @@ const zh = {
     apiAuthenticationDesc: '使用 Authorization: Bearer <API_KEY>，也支持 X-API-Key 请求头。',
     apiAgentWorkflow: 'Agent 调用流程',
     apiAgentWorkflowDesc: '按此顺序完成临时邮箱创建、轮询、读信和清理。',
+    apiCopyAgentGuide: '复制 Agent 调用说明',
     apiPrerequisites: '准备',
     apiPolling: '轮询',
     apiIdempotency: '重试',

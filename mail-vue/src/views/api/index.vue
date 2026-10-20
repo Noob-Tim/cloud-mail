@@ -159,6 +159,11 @@
                 <h2>{{ t('apiAgentWorkflow') }}</h2>
                 <p>{{ t('apiAgentWorkflowDesc') }}</p>
               </div>
+              <el-tooltip :content="t('apiCopyAgentGuide')">
+                <el-button circle text :aria-label="t('apiCopyAgentGuide')" @click="copyText(agentGuideText())">
+                  <Icon icon="lucide:copy" width="17" height="17" />
+                </el-button>
+              </el-tooltip>
             </div>
             <ol class="workflow-list">
               <li v-for="item in agentGuidance.temporaryMailboxWorkflow" :key="item.step">
@@ -553,6 +558,38 @@ function formatJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function agentGuideText() {
+  const guidance = agentGuidance.value;
+  if (!guidance) return '';
+
+  const lines = [
+    '# Cloud Mail API Agent Guide',
+    '',
+    `Base URL: ${baseUrl.value}`,
+    `OpenAPI: ${openApiUrl.value}`,
+    `Authentication: ${guidance.authentication}`,
+    `Response: ${guidance.responseEnvelope}`,
+    `Timestamps: ${guidance.timestamps}`
+  ];
+
+  appendList(lines, 'Prerequisites', guidance.prerequisites);
+  lines.push('', 'Workflow:');
+  guidance.temporaryMailboxWorkflow?.forEach(item => {
+    lines.push(`${item.step}. ${item.method} ${item.path} - ${item.purpose}`);
+  });
+  lines.push('', `Polling: ${guidance.polling}`);
+  lines.push(`Idempotency and retries: ${guidance.idempotency}`);
+  appendList(lines, 'Error handling', Object.values(guidance.retryPolicy || {}));
+  appendList(lines, 'Limitations', guidance.limitations);
+  return lines.join('\n');
+}
+
+function appendList(lines, title, items) {
+  if (!items?.length) return;
+  lines.push('', `${title}:`);
+  items.forEach(item => lines.push(`- ${item}`));
+}
+
 function curlExample(endpoint) {
   let path = endpoint.path.replace(/\{[^}]+}/g, '1');
   const query = endpoint.parameters
@@ -736,6 +773,11 @@ async function copyText(value) {
     margin: 3px 0 0;
     color: var(--el-text-color-secondary);
     font-size: 12px;
+  }
+
+  > .el-button {
+    flex-shrink: 0;
+    margin-left: auto;
   }
 }
 

@@ -31,6 +31,7 @@ const en = {
     apiAuthenticationDesc: 'Use Authorization: Bearer <API_KEY>. X-API-Key is also supported.',
     apiAgentWorkflow: 'Agent workflow',
     apiAgentWorkflowDesc: 'Use this sequence to create, poll, read, and clean up temporary mailboxes.',
+    apiCopyAgentGuide: 'Copy Agent instructions',
     apiPrerequisites: 'Prerequisites',
     apiPolling: 'Polling',
     apiIdempotency: 'Retries',
